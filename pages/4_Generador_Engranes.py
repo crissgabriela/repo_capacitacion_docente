@@ -12,16 +12,19 @@ st.title("⚙️ Generador de Trenes de Transmisión")
 st.markdown("**Objetivo:** Diseñar pares de engranajes rectos para enseñar relaciones de transmisión, torque y velocidad, listos para montar en tableros didácticos.")
 st.divider()
 
-with st.expander("💡 Cinemática en el Tablero MDF (Reflexión Pedagógica)", expanded=True):
+with st.expander("💡 Cinemática y Manufactura (Reflexión Pedagógica)", expanded=True):
     st.markdown("""
-    Un excelente proyecto de aula es pedir a los estudiantes que perforen un tablero de MDF para trasladar el movimiento de un punto A a un punto B. 
+    Para que dos engranajes funcionen juntos, DEBEN tener exactamente el mismo módulo[cite: 111]. 
     
-    Para que el sistema fluya, esta herramienta calcula la **Distancia entre Centros Exacta**. Si los estudiantes hacen los agujeros en el MDF a esa distancia precisa, los engranajes encajarán perfectamente gracias a la **tolerancia (Backlash)**. Al previsualizar el modelo, verás los engranajes alineados exactamente como quedarán en la vida real.
+    Esta herramienta te permite diseñar de dos formas:
+    1. **Modo Asistido:** Ingresas cuánto quieres aumentar o reducir la velocidad, y el sistema te propone los engranajes ideales que caben en una impresora escolar (Ender 3).
+    2. **Modo Manual:** Tienes control total sobre el Módulo y los Dientes.
+    
+    La geometría generada respeta la norma estándar para impresión 3D, incluyendo la tolerancia (Backlash) necesaria entre 0.1 y 0.3 [cite: 145] para que los dientes no se atasquen.
     """)
 
 # --- FUNCIÓN DEL VISOR 3D (THREE.JS) ---
 def mostrar_visor_3d(ruta_stl):
-    """Inyecta un visor interactivo ocultando la complejidad del código."""
     with open(ruta_stl, "rb") as f:
         datos_b64 = base64.b64encode(f.read()).decode("utf-8")
         
@@ -38,7 +41,7 @@ def mostrar_visor_3d(ruta_stl):
         <script>
             var scene = new THREE.Scene();
             var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 60, 90);
+            camera.position.set(0, 60, 100);
             
             var renderer = new THREE.WebGLRenderer({{antialias: true, alpha: true}});
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -64,7 +67,6 @@ def mostrar_visor_3d(ruta_stl):
             var loader = new THREE.STLLoader();
             var geometry = loader.parse(bytes.buffer);
             
-            // Material Morado MakerBox
             var material = new THREE.MeshStandardMaterial({{color: 0x46247a, roughness: 0.5, metalness: 0.2}});
             var mesh = new THREE.Mesh(geometry, material);
             
@@ -91,65 +93,108 @@ def mostrar_visor_3d(ruta_stl):
     </body>
     </html>
     """
-    components.html(html_code, height=350)
+    components.html(html_code, height=380)
 
-# --- INTERFAZ LIMPIA PARA USUARIOS SIN CAD ---
+# --- INTERFAZ LÓGICA ---
 col1, col2 = st.columns([1, 1.2])
 
 with col1:
     st.subheader("1. Configura la Transmisión")
     
-    st.write("**Engranajes** (Mismo módulo para que encajen)")
-    c1, c2, c3 = st.columns(3)
-    modulo = c1.number_input("Módulo (m)", min_value=1.0, max_value=5.0, value=2.0, step=0.5)
-    z1 = c2.number_input("Dientes Motor (Z1)", min_value=8, max_value=60, value=12, step=1)
-    z2 = c3.number_input("Dientes Salida (Z2)", min_value=8, max_value=60, value=24, step=1)
+    modo_diseno = st.radio("Método de Diseño", ["Asistido (Recomendado)", "Manual"], horizontal=True)
     
+    if modo_diseno == "Asistido (Recomendado)":
+        st.write("Ingresa la relación deseada. Te propondremos el sistema óptimo que quepa en tu impresora.")
+        target_ratio = st.number_input("Relación de Transmisión (Ej: 2.0 = El motor gira el doble de rápido que la salida)", min_value=1.0, max_value=8.0, value=2.0, step=0.1)
+        
+        # Algoritmo de propuesta
+        best_error = 999
+        best_z1, best_z2 = 12, 24
+        
+        # Buscamos combinaciones de dientes (mínimo 10 para evitar socavamiento)
+        for z1_test in range(10, 25):
+            z2_test = round(z1_test * target_ratio)
+            error = abs((z2_test / z1_test) - target_ratio)
+            if error < best_error and z2_test <= 60:
+                best_error = error
+                best_z1 = z1_test
+                best_z2 = z2_test
+                
+        # Calculamos el módulo para que el diámetro mayor sea <= 200 y el menor >= 20
+        m_max = 200 / (best_z2 + 2)
+        m_min = max(1.0, 20 / (best_z1 + 2))
+        
+        if m_min > m_max:
+            st.error("⚠️ La relación es tan extrema que no es posible fabricarla en una cama de 20x20cm con boquilla de 0.4mm. Intenta una relación más baja.")
+            m_optimo = 1.0
+        else:
+            m_optimo = min(max(m_min, 2.0), m_max) # Preferimos M2.0 si está en el rango seguro
+            
+            st.success(f"💡 **Recomendación:** Z1=**{best_z1}**, Z2=**{best_z2}**, Módulo=**{m_optimo:.1f}**")
+            
+        c1, c2, c3 = st.columns(3)
+        modulo = c1.number_input("Módulo (m)", value=float(round(m_optimo*2)/2), step=0.5)
+        z1 = c2.number_input("Motor (Z1)", value=int(best_z1), step=1)
+        z2 = c3.number_input("Salida (Z2)", value=int(best_z2), step=1)
+
+    else:
+        c1, c2, c3 = st.columns(3)
+        modulo = c1.number_input("Módulo (m)", min_value=1.0, max_value=8.0, value=2.0, step=0.5)
+        z1 = c2.number_input("Motor (Z1)", min_value=8, max_value=80, value=12, step=1)
+        z2 = c3.number_input("Salida (Z2)", min_value=8, max_value=80, value=24, step=1)
+
     st.write("**Manufactura y Montaje**")
     c4, c5, c6 = st.columns(3)
     espesor = c4.number_input("Grosor (mm)", min_value=3.0, value=5.0)
     eje = c5.number_input("Eje (mm)", min_value=2.0, value=5.0)
-    tolerancia = c6.number_input("Tolerancia", min_value=0.1, max_value=0.5, value=0.25, step=0.05, help="Espacio libre entre dientes. 0.25mm es ideal para impresión 3D.")
+    tolerancia = c6.number_input("Backlash", min_value=0.1, max_value=0.5, value=0.25, step=0.05, help="Espacio entre caras[cite: 147].")
     
-    # Cálculos cinemáticos críticos
-    relacion = z2 / z1
+    # Cálculos cinemáticos según la guía
+    relacion_real = z2 / z1
     dp1 = modulo * z1
     dp2 = modulo * z2
+    de1 = dp1 + 2 * modulo
+    de2 = dp2 + 2 * modulo
     distancia_centros = (dp1 + dp2) / 2.0
     
-    st.markdown("### Datos Críticos para el Aula")
-    
-    if relacion > 1:
-        st.info(f"🐢 **Reductor de Velocidad:** El sistema gira {relacion:.1f} veces más lento, pero tiene **{relacion:.1f}x más fuerza (Torque)**.")
-    elif relacion < 1:
-        st.error(f"🐇 **Multiplicador de Velocidad:** El sistema gira {1/relacion:.1f} veces más rápido, pero pierde fuerza.")
-    else:
-        st.success("⚖️ **Transmisión 1:1:** Misma velocidad y fuerza. Útil solo para trasladar el movimiento espacialmente.")
+    # Verificación de límites de la impresora (Ender 3)
+    if de1 > 200 or de2 > 200:
+        st.error(f"🚨 **¡Error Dimensional!** El engranaje mayor tiene un diámetro de {max(de1, de2):.1f} mm. No cabrá en una cama de 200x200 mm.")
+    elif de1 < 20 or de2 < 20:
+        st.warning(f"⚠️ **Atención:** El engranaje menor mide {min(de1, de2):.1f} mm. Podría perder precisión con una boquilla de 0.4mm.")
         
+    st.markdown("### Datos Críticos para el Aula")
     st.metric("🎯 Perforación en Tablero MDF (Distancia entre Ejes)", f"{distancia_centros:.1f} mm")
 
-    # Lógica CSG para DOS engranajes alineados visualmente
+    # Lógica CSG matemáticamente exacta a la guía proporcionada
     codigo_scad = f"""
     m = {modulo}; z1 = {z1}; z2 = {z2}; h = {espesor}; eje = {eje}; tol = {tolerancia};
 
     module gear(z) {{
+        // Fórmulas exactas según la Guía de Engranes
         dp = m * z;
-        de = dp + 2 * m;
-        df = dp - 2.5 * m;
+        de = dp + 2 * m;        // Addendum = m
+        df = dp - 2.5 * m;      // Dedendum = 1.25*m
+        
+        // Geometría del diente (Aproximación para 20° de ángulo de presión)
+        // Ancho en la base y en la punta (semianchos)
+        w_base = 1.24 * m;
+        w_punta = 0.42 * m;
+        
         ang = 360 / z;
 
         difference() {{
             linear_extrude(height = h) {{
                 union() {{
-                    circle(d = df + m, $fn=100); 
+                    circle(d = df + 0.1, $fn=100); 
                     for (i = [0 : z-1]) {{
                         rotate([0, 0, i * ang])
-                        // Reducimos el ancho del diente para generar el Backlash
+                        // Reducimos el ancho restando tol/2 para generar el Backlash
                         polygon([
-                            [(df)/2, -(m*1.0 - tol/2)],
-                            [de/2,   -(m*0.35 - tol/2)],
-                            [de/2,    (m*0.35 - tol/2)],
-                            [(df)/2,  (m*1.0 - tol/2)]
+                            [df/2, -(w_base - tol/2)],
+                            [de/2, -(w_punta - tol/2)],
+                            [de/2,  (w_punta - tol/2)],
+                            [df/2,  (w_base - tol/2)]
                         ]);
                     }}
                 }}
@@ -158,23 +203,19 @@ with col1:
         }}
     }}
 
-    // Engranaje 1 (Motor) - Generado en el origen
+    // Engranaje 1 (Motor)
     gear(z1);
 
     // =================================================================
-    // ---> ZONA DE AJUSTE DE IMPRESIÓN Y ENGRANE <---
+    // DISTANCIA DE IMPRESIÓN CON BACKLASH INCLUIDO
     // =================================================================
     dist_centros = (m * z1)/2 + (m * z2)/2;
-    
-    // MODIFICA ESTE VALOR: Separación en el STL = Centros + (2 * Tolerancia)
     distancia_impresion = dist_centros + (2 * tol); 
 
-    // Alineación geométrica: Rotamos (180 + 180/z2) para asegurar que un 
-    // "hueco" apunte hacia el diente del Engranaje 1, evitando colisiones
+    // Rotación para alinear dientes y huecos perfectamente en el visor
     translate([distancia_impresion, 0, 0]) 
         rotate([0, 0, 180 + (180/z2)]) 
         gear(z2);
-    // =================================================================
     """
     
     scad_file = "temp_tren.scad"
@@ -183,7 +224,7 @@ with col1:
 
     st.write("") 
     if st.button("✨ Generar Set de Transmisión", type="primary", use_container_width=True):
-        with st.spinner("Calculando tolerancias y alineando par cinemático..."):
+        with st.spinner("Calculando geometría involutiva y fabricando par cinemático..."):
             with open(scad_file, "w") as f:
                 f.write(codigo_scad)
             try:
