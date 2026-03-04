@@ -1,30 +1,28 @@
 import streamlit as st
 
 st.set_page_config(
-    page_title="Talleres MakerBox | UTalca",
-    page_icon="⚙️",
+    page_title="Capacitación Docente | UTalca",
+    page_icon="🎓",
     layout="wide"
 )
 
-st.title("Talleres de Innovación y Manufactura Digital")
-st.subheader("Facultad de Ingeniería - MakerBox")
+st.title("Capacitación Docente: Herramientas Tecnológicas para la Docencia")
+st.subheader("Innovación Educativa STEM - Espacio DTC+")
 
 st.markdown("""
-Les damos la bienvenida al ciclo de talleres de diseño aplicado. 
+Les damos la bienvenida a esta plataforma de apoyo interactivo.
 
-El objetivo de este ciclo es transitar desde el concepto teórico hasta la simulación y validación digital rápida, preparándolos para los desafíos de la Industria 4.0. Nuestro hito final será el diseño, simulación y manufactura de un sistema de propulsión eficiente (hélice carenada).
+El objetivo de este programa es capacitarlos en el uso de herramientas tecnológicas de diseño e impresión 3D y la implementación de Arduino. Buscamos diseñar recursos pedagógicos interactivos y tangibles que apoyen la enseñanza de áreas STEM, fomentando la innovación educativa mediante el Aprendizaje Basado en Proyectos (ABP).
 
-### 📅 Hoja de Ruta del Ciclo
-En el menú lateral se irán habilitando las herramientas interactivas para cada sesión de 90 minutos:
+### 📚 Módulos del Programa
+En el menú lateral podrán acceder a las herramientas interactivas diseñadas para cada etapa de nuestra capacitación de 24 horas[cite: 10]:
 
-* **Taller 1: Dualidad Digital** (Modelado CSG vs. B-Rep).
-* **Taller 2: Bridas Paramétricas y Ensambles** (Diseño auto-ajustable).
-* **Taller 3: Simulación FEA** (Validación estructural y Factor de Seguridad).
-* **Taller 4: Aerodinámica** (De perfiles NACA a CFD).
-* **Taller 5: Hidráulica y Efecto Venturi** (Validación del Principio de Bernoulli).
+* **Módulo 1: Diseño 3D en Tinkercad:** Herramientas para conceptualizar modelos geométricos y materiales didácticos[cite: 13, 15].
+* **Módulo 2: Impresión 3D:** Asistente técnico para parámetros de calidad y diagnóstico de impresiones fallidas[cite: 17, 18, 42].
+* **Módulo 3: Integración de Arduino:** Simulador lógico para la creación de herramientas interactivas (ej. dispositivo de selección múltiple)[cite: 21, 53].
 
-👈 **Seleccionen "Taller Dualidad" en el menú de la izquierda para comenzar nuestra primera sesión.**
+👈 **Seleccionen un módulo en el menú de la izquierda para explorar los recursos.**
 
 ---
-*Plataforma de apoyo docente desarrollada por la académica Cris.*
+*Programa dictado y plataforma desarrollada por la académica Cris.*
 """)
