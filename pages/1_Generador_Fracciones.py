@@ -6,22 +6,21 @@ import shutil
 import base64
 
 # Configuración de estilo
-st.set_page_config(page_title="Fracciones 3D | Capacitación", layout="wide")
+st.set_page_config(page_title="Set de Fracciones | Capacitación", layout="wide")
 
-st.title("🍕 Generador de Fracciones 3D")
-st.markdown("**Objetivo:** Diseñar material didáctico tangible para la enseñanza de matemáticas de forma rápida y sin necesidad de conocimientos previos en diseño.")
+st.title("🍕 Generador de Sets de Fracciones 3D")
+st.markdown("**Objetivo:** Diseñar sets completos de fracciones (piezas + bandeja contenedora) listos para manufactura interactiva en el aula.")
 st.divider()
 
-with st.expander("💡 De lo Manual a lo Automático (Reflexión Pedagógica)", expanded=True):
+with st.expander("💡 De la Pieza al Set Completo (Reflexión Pedagógica)", expanded=True):
     st.markdown("""
-    Durante nuestra sesión sincrónica, aprendimos a modelar el concepto de fracciones **manualmente usando Tinkercad** (puedes revisar el [ejemplo de clase aquí](https://www.tinkercad.com/things/jd2LLO30qJE-fracciones)). 
+    Durante nuestra sesión, modelamos una pieza suelta en Tinkercad. Ahora, esta herramienta automatiza la creación del **Set Completo**. 
     
-    Ese ejercicio es vital para desarrollar tu visión espacial y la de tus estudiantes. Sin embargo, para imprimir un set completo para tu colegio, modelar cada pieza manualmente no es eficiente. **¡Utiliza esta herramienta como tu Biblioteca de Recursos!** Solo elige la fracción y descarga el modelo listo para tu impresora 3D.
+    Al seleccionar una fracción (ej. 1/4), el motor matemático generará automáticamente las **4 piezas** necesarias para formar el entero, más una **bandeja contenedora**. La bandeja tiene una tolerancia exacta de 0.4 mm para que las piezas encajen como un rompecabezas, permitiendo a los estudiantes interactuar de forma tangible con el concepto de unidad.
     """)
 
 # --- FUNCIÓN DEL VISOR 3D (THREE.JS) ---
 def mostrar_visor_3d(ruta_stl):
-    """Inyecta un visor interactivo ocultando la complejidad del código."""
     with open(ruta_stl, "rb") as f:
         datos_b64 = base64.b64encode(f.read()).decode("utf-8")
         
@@ -38,7 +37,7 @@ def mostrar_visor_3d(ruta_stl):
         <script>
             var scene = new THREE.Scene();
             var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 50, 80);
+            camera.position.set(0, 80, 100);
             
             var renderer = new THREE.WebGLRenderer({{antialias: true, alpha: true}});
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -47,7 +46,7 @@ def mostrar_visor_3d(ruta_stl):
             var controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.autoRotate = true; 
-            controls.autoRotateSpeed = 3.0;
+            controls.autoRotateSpeed = 2.0;
             
             scene.add(new THREE.AmbientLight(0xffffff, 0.6));
             var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -93,51 +92,86 @@ def mostrar_visor_3d(ruta_stl):
     """
     components.html(html_code, height=350)
 
-# --- INTERFAZ LIMPIA PARA USUARIOS SIN CAD ---
+# --- INTERFAZ LÓGICA ---
 col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    st.subheader("1. Configura tu Ficha")
+    st.subheader("1. Configura tu Set de Fracciones")
     
-    c1, c2 = st.columns(2)
-    numerador = c1.number_input("Numerador", min_value=1, max_value=12, value=1)
-    denominador = c2.selectbox("Denominador", [2, 3, 4, 5, 6, 8, 10, 12], index=1)
+    fraccion_seleccionada = st.selectbox(
+        "Fracción a generar:", 
+        ["1/2", "1/3", "1/4", "1/5", "1/6", "1/8"],
+        index=2
+    )
     
-    radio = st.slider("Radio total de la ficha (mm)", 20.0, 60.0, 30.0, step=1.0)
-    espesor = st.slider("Grosor de la ficha (mm)", 2.0, 5.0, 3.0, step=0.5)
+    # Extraer el denominador del texto (ej. "1/4" -> 4)
+    denominador = int(fraccion_seleccionada.split('/')[1])
     
-    if numerador > denominador:
-        st.warning("⚠️ El numerador es mayor al denominador. Se generará como una cuña proporcional al círculo completo.")
-        
-    angulo_sector = (numerador / denominador) * 360.0
+    # Reducimos un poco el radio máximo sugerido para que el Set completo quepa en impresoras estándar (200x200mm)
+    radio = st.slider("Radio del círculo completo (mm)", 20.0, 45.0, 30.0, step=1.0)
+    espesor = st.slider("Grosor de las piezas (mm)", 2.0, 5.0, 3.0, step=0.5)
     
-    # Lógica "invisible" de OpenSCAD
+    # Lógica CSG Automatizada (Bandeja + Piezas)
     codigo_scad = f"""
-    radio = {radio}; espesor = {espesor}; num = {numerador}; den = {denominador}; angulo = {angulo_sector};
-    texto_fraccion = str(num, "/", den);
-    angulo_real = angulo >= 360 ? 359.99 : angulo;
-    difference() {{
-        rotate_extrude(angle=angulo_real, $fn=100) square([radio, espesor]);
-        rotate([0, 0, angulo_real / 2])
-            translate([radio * 0.55, 0, espesor - 1]) 
-            linear_extrude(2)
-            text(texto_fraccion, size=radio * 0.25, halign="center", valign="center", font="Arial:style=Bold");
+    radio = {radio}; 
+    espesor = {espesor}; 
+    den = {denominador}; 
+    tol = 0.4; // Tolerancia para que las piezas entren suaves en la bandeja
+    texto_fraccion = "1/{denominador}";
+    ang = 360 / den;
+
+    module ficha() {{
+        difference() {{
+            rotate_extrude(angle=ang, $fn=100) square([radio, espesor]);
+            
+            // Posicionamiento del texto en la bisectriz de la pieza
+            rotate([0, 0, ang / 2])
+                translate([radio * 0.55, 0, espesor - 1]) 
+                linear_extrude(2)
+                text(texto_fraccion, size=radio * 0.25, halign="center", valign="center", font="Arial:style=Bold");
+        }}
+    }}
+
+    // ==========================================
+    // 1. BANDEJA CONTENEDORA (A la Izquierda)
+    // ==========================================
+    translate([-(radio + 10), 0, 0]) {{
+        difference() {{
+            // Borde exterior (Radio de piezas + Tolerancia + 3mm de pared gruesa)
+            cylinder(h=espesor + 2, r=radio + tol + 3, $fn=100);
+            
+            // Hueco interior para que encajen las piezas (Profundidad = espesor + 1mm para cogerlas fácil)
+            translate([0, 0, 2]) 
+                cylinder(h=espesor + 1, r=radio + tol, $fn=100);
+        }}
+    }}
+
+    // ==========================================
+    // 2. PIEZAS DEL ROMPECABEZAS (A la Derecha)
+    // ==========================================
+    translate([radio + 10, 0, 0]) {{
+        for (i = [0 : den - 1]) {{
+            rotate([0, 0, i * ang])
+            // Separación radial (tipo pizza explotada) de 2mm para que se impriman sueltas
+            translate([cos(ang/2)*2, sin(ang/2)*2, 0])
+            ficha();
+        }}
     }}
     """
     
     scad_file = "temp_fraccion.scad"
-    stl_file = f"fraccion_{numerador}_{denominador}.stl"
+    stl_file = f"set_fraccion_1_de_{denominador}.stl"
     ruta_openscad = shutil.which("openscad") or r"C:\Program Files\OpenSCAD\openscad.exe"
 
-    st.write("") # Espaciador
-    if st.button("✨ Visualizar y Preparar Ficha", type="primary", use_container_width=True):
-        with st.spinner("Creando modelo 3D..."):
+    st.write("") 
+    if st.button("✨ Generar Set Completo", type="primary", use_container_width=True):
+        with st.spinner(f"Modelando bandeja y {denominador} piezas de {fraccion_seleccionada}..."):
             with open(scad_file, "w") as f:
                 f.write(codigo_scad)
             try:
                 subprocess.run([ruta_openscad, "-o", stl_file, scad_file], check=True)
             except Exception as e:
-                st.error("Error al generar el modelo. Si estás en la nube, verifica el archivo packages.txt.")
+                st.error("Error al generar el modelo. Verifica que OpenSCAD esté configurado en el servidor.")
 
 with col2:
     st.subheader("2. Previsualización y Descarga")
@@ -147,11 +181,11 @@ with col2:
         
         with open(stl_file, "rb") as f:
             st.download_button(
-                label=f"📥 DESCARGAR MODELO PARA IMPRIMIR (.STL)",
+                label=f"📥 DESCARGAR SET DE {denominador} PIEZAS Y BANDEJA (.STL)",
                 data=f,
                 file_name=stl_file,
                 mime="application/sla",
                 use_container_width=True
             )
     else:
-        st.info("👈 Ajusta los parámetros a la izquierda y haz clic en el botón mágico para ver tu ficha didáctica aquí.")
+        st.info("👈 Selecciona la fracción a la izquierda y haz clic en el botón mágico para visualizar tu Set Didáctico.")
