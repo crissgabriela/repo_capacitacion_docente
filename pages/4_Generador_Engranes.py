@@ -173,7 +173,7 @@ with col1:
         w_punta = 0.42 * m;
         
         ang = 360 / z;
-        overlap = 0.5; // Soluciona el error de "geometría non-manifold"
+        overlap = 0.8; // Soluciona el error de "geometría non-manifold"
 
         difference() {{
             linear_extrude(height = h) {{
