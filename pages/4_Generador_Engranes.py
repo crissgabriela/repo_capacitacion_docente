@@ -20,7 +20,7 @@ with st.expander("💡 Cinemática y Manufactura (Reflexión Pedagógica)", expa
     1. **Modo Asistido:** Ingresas cuánto quieres aumentar o reducir la velocidad, y el sistema te propone los engranajes ideales que caben en una impresora escolar.
     2. **Modo Manual:** Tienes control total sobre el Módulo y los Dientes.
     
-    La geometría generada respeta la norma estándar para impresión 3D, incluyendo la tolerancia (Backlash) necesaria entre 0.1 y 0.3 para que los dientes no se atasquen.
+    La geometría generada respeta la norma estándar para impresión 3D. La visualización en pantalla muestra las piezas ubicadas exactamente a su **Distancia entre Centros**, revelando el espacio libre (Backlash) que permitirá el giro sin atascos.
     """)
 
 # --- FUNCIÓN DEL VISOR 3D (THREE.JS) ---
@@ -104,8 +104,7 @@ with col1:
     modo_diseno = st.radio("Método de Diseño", ["Asistido (Recomendado)", "Manual"], horizontal=True)
     
     if modo_diseno == "Asistido (Recomendado)":
-        st.write("Ingresa la relación deseada. Te propondremos el sistema óptimo que quepa en tu impresora.")
-        target_ratio = st.number_input("Relación de Transmisión (Ej: 2.0 = El motor gira el doble de rápido que la salida)", min_value=1.0, max_value=8.0, value=2.0, step=0.1)
+        target_ratio = st.number_input("Relación de Transmisión (Ej: 2.0 = El motor gira el doble de rápido)", min_value=1.0, max_value=8.0, value=2.0, step=0.1)
         
         best_error = 999
         best_z1, best_z2 = 12, 24
@@ -122,7 +121,7 @@ with col1:
         m_min = max(1.0, 20 / (best_z1 + 2))
         
         if m_min > m_max:
-            st.error("⚠️ La relación es tan extrema que no es posible fabricarla en una cama de 20x20cm con boquilla de 0.4mm. Intenta una relación más baja.")
+            st.error("⚠️ La relación es tan extrema que no cabrá en la impresora. Intenta una relación más baja.")
             m_optimo = 1.0
         else:
             m_optimo = min(max(m_min, 2.0), m_max) 
@@ -143,7 +142,7 @@ with col1:
     c4, c5, c6 = st.columns(3)
     espesor = c4.number_input("Grosor (mm)", min_value=3.0, value=5.0)
     eje = c5.number_input("Eje (mm)", min_value=2.0, value=5.0)
-    tolerancia = c6.number_input("Backlash", min_value=0.1, max_value=0.5, value=0.25, step=0.05, help="Espacio entre caras.")
+    tolerancia = c6.number_input("Backlash", min_value=0.1, max_value=0.5, value=0.25, step=0.05)
     
     relacion_real = z2 / z1
     dp1 = modulo * z1
@@ -155,12 +154,12 @@ with col1:
     if de1 > 200 or de2 > 200:
         st.error(f"🚨 **¡Error Dimensional!** El engranaje mayor tiene un diámetro de {max(de1, de2):.1f} mm. No cabrá en una cama de 200x200 mm.")
     elif de1 < 20 or de2 < 20:
-        st.warning(f"⚠️ **Atención:** El engranaje menor mide {min(de1, de2):.1f} mm. Podría perder precisión con una boquilla de 0.4mm.")
+        st.warning(f"⚠️ **Atención:** El engranaje menor mide {min(de1, de2):.1f} mm. Podría perder precisión.")
         
     st.markdown("### Datos Críticos para el Aula")
     st.metric("🎯 Perforación en Tablero MDF (Distancia entre Ejes)", f"{distancia_centros:.1f} mm")
 
-    # --- LÓGICA CSG CORREGIDA CON SOLDADURA DE RAÍZ ---
+    # --- LÓGICA CSG MATEMÁTICAMENTE CORREGIDA ---
     codigo_scad = f"""
     m = {modulo}; z1 = {z1}; z2 = {z2}; h = {espesor}; eje = {eje}; tol = {tolerancia};
 
@@ -169,8 +168,9 @@ with col1:
         de = dp + 2 * m;        
         df = dp - 2.5 * m;      
         
-        w_base = 1.24 * m;
-        w_punta = 0.42 * m;
+        // Semianchos recalculados para evitar auto-intersecciones en la base
+        w_base_half = 1.0 * m;
+        w_punta_half = 0.3 * m;
         
         ang = 360 / z;
 
@@ -182,12 +182,12 @@ with col1:
                     
                     for (i = [0 : z-1]) {{
                         rotate([0, 0, i * ang])
-                        // Hunde la raíz del diente hacia el centro (2*m) para fusión garantizada
+                        // El polígono penetra 0.5 mm el cilindro base para asegurar la soldadura
                         polygon([
-                            [df/2 - 2*m, -(w_base + m)],
-                            [de/2,       -(w_punta - tol/2)],
-                            [de/2,        (w_punta - tol/2)],
-                            [df/2 - 2*m,  (w_base + m)]
+                            [df/2 - 0.5, -(w_base_half - tol/2)],
+                            [de/2,       -(w_punta_half - tol/2)],
+                            [de/2,        (w_punta_half - tol/2)],
+                            [df/2 - 0.5,  (w_base_half - tol/2)]
                         ]);
                     }}
                 }}
@@ -199,9 +199,11 @@ with col1:
     // Engranaje 1 (Motor)
     gear(z1);
 
-    // Separación para impresión y engrane
+    // =================================================================
+    // DISTANCIA DE IMPRESIÓN IGUAL A DISTANCIA ENTRE CENTROS
+    // =================================================================
     dist_centros = (m * z1)/2 + (m * z2)/2;
-    distancia_impresion = dist_centros + (2 * tol); 
+    distancia_impresion = dist_centros; 
 
     translate([distancia_impresion, 0, 0]) 
         rotate([0, 0, 180 + (180/z2)]) 
@@ -214,7 +216,7 @@ with col1:
 
     st.write("") 
     if st.button("✨ Generar Set de Transmisión", type="primary", use_container_width=True):
-        with st.spinner("Calculando geometría involutiva y fabricando par cinemático..."):
+        with st.spinner("Calculando cinemática y soldando mallas..."):
             with open(scad_file, "w") as f:
                 f.write(codigo_scad)
             try:
