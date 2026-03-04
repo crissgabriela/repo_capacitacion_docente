@@ -14,13 +14,13 @@ st.divider()
 
 with st.expander("💡 Cinemática y Manufactura (Reflexión Pedagógica)", expanded=True):
     st.markdown("""
-    Para que dos engranajes funcionen juntos, DEBEN tener exactamente el mismo módulo[cite: 111]. 
+    Para que dos engranajes funcionen juntos, DEBEN tener exactamente el mismo módulo. 
     
     Esta herramienta te permite diseñar de dos formas:
     1. **Modo Asistido:** Ingresas cuánto quieres aumentar o reducir la velocidad, y el sistema te propone los engranajes ideales que caben en una impresora escolar (Ender 3).
     2. **Modo Manual:** Tienes control total sobre el Módulo y los Dientes.
     
-    La geometría generada respeta la norma estándar para impresión 3D, incluyendo la tolerancia (Backlash) necesaria entre 0.1 y 0.3 [cite: 145] para que los dientes no se atasquen.
+    La geometría generada respeta la norma estándar para impresión 3D, incluyendo la tolerancia (Backlash) necesaria entre 0.1 y 0.3 para que los dientes no se atasquen.
     """)
 
 # --- FUNCIÓN DEL VISOR 3D (THREE.JS) ---
@@ -107,11 +107,9 @@ with col1:
         st.write("Ingresa la relación deseada. Te propondremos el sistema óptimo que quepa en tu impresora.")
         target_ratio = st.number_input("Relación de Transmisión (Ej: 2.0 = El motor gira el doble de rápido que la salida)", min_value=1.0, max_value=8.0, value=2.0, step=0.1)
         
-        # Algoritmo de propuesta
         best_error = 999
         best_z1, best_z2 = 12, 24
         
-        # Buscamos combinaciones de dientes (mínimo 10 para evitar socavamiento)
         for z1_test in range(10, 25):
             z2_test = round(z1_test * target_ratio)
             error = abs((z2_test / z1_test) - target_ratio)
@@ -120,7 +118,6 @@ with col1:
                 best_z1 = z1_test
                 best_z2 = z2_test
                 
-        # Calculamos el módulo para que el diámetro mayor sea <= 200 y el menor >= 20
         m_max = 200 / (best_z2 + 2)
         m_min = max(1.0, 20 / (best_z1 + 2))
         
@@ -128,8 +125,7 @@ with col1:
             st.error("⚠️ La relación es tan extrema que no es posible fabricarla en una cama de 20x20cm con boquilla de 0.4mm. Intenta una relación más baja.")
             m_optimo = 1.0
         else:
-            m_optimo = min(max(m_min, 2.0), m_max) # Preferimos M2.0 si está en el rango seguro
-            
+            m_optimo = min(max(m_min, 2.0), m_max) 
             st.success(f"💡 **Recomendación:** Z1=**{best_z1}**, Z2=**{best_z2}**, Módulo=**{m_optimo:.1f}**")
             
         c1, c2, c3 = st.columns(3)
@@ -147,9 +143,8 @@ with col1:
     c4, c5, c6 = st.columns(3)
     espesor = c4.number_input("Grosor (mm)", min_value=3.0, value=5.0)
     eje = c5.number_input("Eje (mm)", min_value=2.0, value=5.0)
-    tolerancia = c6.number_input("Backlash", min_value=0.1, max_value=0.5, value=0.25, step=0.05, help="Espacio entre caras[cite: 147].")
+    tolerancia = c6.number_input("Backlash", min_value=0.1, max_value=0.5, value=0.25, step=0.05, help="Espacio entre caras.")
     
-    # Cálculos cinemáticos según la guía
     relacion_real = z2 / z1
     dp1 = modulo * z1
     dp2 = modulo * z2
@@ -157,7 +152,6 @@ with col1:
     de2 = dp2 + 2 * modulo
     distancia_centros = (dp1 + dp2) / 2.0
     
-    # Verificación de límites de la impresora (Ender 3)
     if de1 > 200 or de2 > 200:
         st.error(f"🚨 **¡Error Dimensional!** El engranaje mayor tiene un diámetro de {max(de1, de2):.1f} mm. No cabrá en una cama de 200x200 mm.")
     elif de1 < 20 or de2 < 20:
@@ -166,35 +160,35 @@ with col1:
     st.markdown("### Datos Críticos para el Aula")
     st.metric("🎯 Perforación en Tablero MDF (Distancia entre Ejes)", f"{distancia_centros:.1f} mm")
 
-    # Lógica CSG matemáticamente exacta a la guía proporcionada
+    # --- LÓGICA CSG CORREGIDA (UNION DE MALLAS Y BACKLASH) ---
     codigo_scad = f"""
     m = {modulo}; z1 = {z1}; z2 = {z2}; h = {espesor}; eje = {eje}; tol = {tolerancia};
 
     module gear(z) {{
-        // Fórmulas exactas según la Guía de Engranes
         dp = m * z;
-        de = dp + 2 * m;        // Addendum = m
-        df = dp - 2.5 * m;      // Dedendum = 1.25*m
+        de = dp + 2 * m;        
+        df = dp - 2.5 * m;      
         
-        // Geometría del diente (Aproximación para 20° de ángulo de presión)
-        // Ancho en la base y en la punta (semianchos)
         w_base = 1.24 * m;
         w_punta = 0.42 * m;
         
         ang = 360 / z;
+        overlap = 0.5; // Soluciona el error de "geometría non-manifold"
 
         difference() {{
             linear_extrude(height = h) {{
                 union() {{
-                    circle(d = df + 0.1, $fn=100); 
+                    // Cuerpo base del engrane
+                    circle(d = df, $fn=100); 
+                    
                     for (i = [0 : z-1]) {{
                         rotate([0, 0, i * ang])
-                        // Reducimos el ancho restando tol/2 para generar el Backlash
+                        // El diente penetra 'overlap' mm hacia el centro para asegurar soldadura
                         polygon([
-                            [df/2, -(w_base - tol/2)],
-                            [de/2, -(w_punta - tol/2)],
-                            [de/2,  (w_punta - tol/2)],
-                            [df/2,  (w_base - tol/2)]
+                            [df/2 - overlap, -(w_base - tol/2)],
+                            [de/2,           -(w_punta - tol/2)],
+                            [de/2,            (w_punta - tol/2)],
+                            [df/2 - overlap,  (w_base - tol/2)]
                         ]);
                     }}
                 }}
@@ -206,13 +200,10 @@ with col1:
     // Engranaje 1 (Motor)
     gear(z1);
 
-    // =================================================================
-    // DISTANCIA DE IMPRESIÓN CON BACKLASH INCLUIDO
-    // =================================================================
+    // Separación para impresión y engrane
     dist_centros = (m * z1)/2 + (m * z2)/2;
     distancia_impresion = dist_centros + (2 * tol); 
 
-    // Rotación para alinear dientes y huecos perfectamente en el visor
     translate([distancia_impresion, 0, 0]) 
         rotate([0, 0, 180 + (180/z2)]) 
         gear(z2);
