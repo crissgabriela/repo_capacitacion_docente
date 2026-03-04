@@ -8,23 +8,20 @@ import base64
 # Configuración de estilo
 st.set_page_config(page_title="Fracciones 3D | Capacitación", layout="wide")
 
-st.title("🍕 Generador Paramétrico de Fracciones 3D")
-st.markdown("**Objetivo:** Diseñar material didáctico tangible para la enseñanza de matemáticas, controlando la geometría mediante proporciones angulares.")
+st.title("🍕 Generador de Fracciones 3D")
+st.markdown("**Objetivo:** Diseñar material didáctico tangible para la enseñanza de matemáticas de forma rápida y sin necesidad de conocimientos previos en diseño.")
 st.divider()
 
-# --- CONEXIÓN PEDAGÓGICA (TINKERCAD VS PARAMÉTRICO) ---
-with st.expander("💡 De lo Manual a lo Paramétrico (Ver reflexión pedagógica)", expanded=True):
+with st.expander("💡 De lo Manual a lo Automático (Reflexión Pedagógica)", expanded=True):
     st.markdown("""
     Durante nuestra sesión sincrónica, aprendimos a modelar el concepto de fracciones **manualmente usando Tinkercad** (puedes revisar el [ejemplo de clase aquí](https://www.tinkercad.com/things/jd2LLO30qJE-fracciones)). 
     
-    Ese ejercicio es vital para que tus estudiantes desarrollen visión espacial. Sin embargo, como docentes, nuestro tiempo es limitado. Si necesitas imprimir un set completo de 50 fichas para todo tu curso escolar, modelar cada cuña manualmente no es eficiente. 
-    
-    **¡Utiliza esta herramienta como tu Biblioteca de Recursos!** Aquí el código matemático hace el trabajo pesado por ti. Solo elige la fracción y descarga el modelo listo para la impresora.
+    Ese ejercicio es vital para desarrollar tu visión espacial y la de tus estudiantes. Sin embargo, para imprimir un set completo para tu colegio, modelar cada pieza manualmente no es eficiente. **¡Utiliza esta herramienta como tu Biblioteca de Recursos!** Solo elige la fracción y descarga el modelo listo para tu impresora 3D.
     """)
 
 # --- FUNCIÓN DEL VISOR 3D (THREE.JS) ---
 def mostrar_visor_3d(ruta_stl):
-    """Inyecta un visor Three.js interactivo leyendo el archivo STL en base64."""
+    """Inyecta un visor interactivo ocultando la complejidad del código."""
     with open(ruta_stl, "rb") as f:
         datos_b64 = base64.b64encode(f.read()).decode("utf-8")
         
@@ -67,7 +64,7 @@ def mostrar_visor_3d(ruta_stl):
             var loader = new THREE.STLLoader();
             var geometry = loader.parse(bytes.buffer);
             
-            // Material Magenta MakerBox para las fracciones
+            // Material Magenta MakerBox
             var material = new THREE.MeshStandardMaterial({{color: 0xc72979, roughness: 0.3, metalness: 0.1}});
             var mesh = new THREE.Mesh(geometry, material);
             
@@ -94,47 +91,33 @@ def mostrar_visor_3d(ruta_stl):
     </body>
     </html>
     """
-    components.html(html_code, height=400)
+    components.html(html_code, height=350)
 
-
-# --- LAYOUT A DOS COLUMNAS ---
-col1, col2 = st.columns([1, 1.5])
+# --- INTERFAZ LIMPIA PARA USUARIOS SIN CAD ---
+col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    st.subheader("Parámetros de la Ficha")
+    st.subheader("1. Configura tu Ficha")
     
     c1, c2 = st.columns(2)
     numerador = c1.number_input("Numerador", min_value=1, max_value=12, value=1)
-    denominador = c2.selectbox("Denominador", [2, 3, 4, 5, 6, 8, 10, 12], index=1) 
+    denominador = c2.selectbox("Denominador", [2, 3, 4, 5, 6, 8, 10, 12], index=1)
     
-    radio = st.slider("Radio del cilindro completo (mm)", 20.0, 60.0, 30.0, step=1.0)
-    espesor = st.slider("Espesor de la ficha (mm)", 2.0, 5.0, 3.0, step=0.5)
+    radio = st.slider("Radio total de la ficha (mm)", 20.0, 60.0, 30.0, step=1.0)
+    espesor = st.slider("Grosor de la ficha (mm)", 2.0, 5.0, 3.0, step=0.5)
     
     if numerador > denominador:
-        st.warning("⚠️ Fracción impropia. El numerador es mayor al denominador. Se modelará como una fracción de un círculo completo (modulando a 360°).")
+        st.warning("⚠️ El numerador es mayor al denominador. Se generará como una cuña proporcional al círculo completo.")
         
     angulo_sector = (numerador / denominador) * 360.0
     
-    st.markdown("### Análisis Geométrico")
-    st.latex(r"\theta = \left( \frac{" + str(numerador) + "}{" + str(denominador) + r"} \right) \times 360^\circ = " + f"{angulo_sector:.1f}^\circ")
-
-with col2:
-    st.subheader("Generador CSG (OpenSCAD)")
-    
+    # Lógica "invisible" de OpenSCAD
     codigo_scad = f"""
-    radio = {radio};
-    espesor = {espesor};
-    num = {numerador};
-    den = {denominador};
-    angulo = {angulo_sector};
+    radio = {radio}; espesor = {espesor}; num = {numerador}; den = {denominador}; angulo = {angulo_sector};
     texto_fraccion = str(num, "/", den);
-
     angulo_real = angulo >= 360 ? 359.99 : angulo;
-
     difference() {{
-        rotate_extrude(angle=angulo_real, $fn=100)
-            square([radio, espesor]);
-        
+        rotate_extrude(angle=angulo_real, $fn=100) square([radio, espesor]);
         rotate([0, 0, angulo_real / 2])
             translate([radio * 0.55, 0, espesor - 1]) 
             linear_extrude(2)
@@ -144,43 +127,31 @@ with col2:
     
     scad_file = "temp_fraccion.scad"
     stl_file = f"fraccion_{numerador}_{denominador}.stl"
-    
     ruta_openscad = shutil.which("openscad") or r"C:\Program Files\OpenSCAD\openscad.exe"
 
-    if st.button("🛠️ Compilar Ficha de Fracción", type="primary", use_container_width=True):
-        with st.spinner("Calculando geometría y generando bajo-relieve..."):
+    st.write("") # Espaciador
+    if st.button("✨ Visualizar y Preparar Ficha", type="primary", use_container_width=True):
+        with st.spinner("Creando modelo 3D..."):
             with open(scad_file, "w") as f:
                 f.write(codigo_scad)
-            
             try:
                 subprocess.run([ruta_openscad, "-o", stl_file, scad_file], check=True)
-                st.success(f"¡Ficha {numerador}/{denominador} compilada con éxito!")
             except Exception as e:
-                st.error("Error al compilar la geometría.")
-                st.info("Asegúrate de que el archivo `packages.txt` contenga `openscad` si estás en la nube.")
+                st.error("Error al generar el modelo. Si estás en la nube, verifica el archivo packages.txt.")
 
-# --- ÁREA DE VISUALIZACIÓN Y DESCARGA ---
-if os.path.exists(stl_file):
-    st.divider()
-    col3, col4 = st.columns([2, 1])
+with col2:
+    st.subheader("2. Previsualización y Descarga")
     
-    with col3:
-        st.subheader("Previsualización 3D")
+    if os.path.exists(stl_file):
         mostrar_visor_3d(stl_file)
-        
-    with col4:
-        st.subheader("Manufactura")
-        st.write("Tu ficha didáctica está lista para imprimir.")
-        st.write(f"- **Fracción:** {numerador}/{denominador}")
-        st.write(f"- **Ángulo de barrido:** {angulo_sector:.1f}°")
-        st.write(f"- **Diámetro total:** {radio * 2} mm")
         
         with open(stl_file, "rb") as f:
             st.download_button(
-                label=f"📥 DESCARGAR FICHA {numerador}-{denominador}.STL",
+                label=f"📥 DESCARGAR MODELO PARA IMPRIMIR (.STL)",
                 data=f,
                 file_name=stl_file,
                 mime="application/sla",
-                use_container_width=True,
-                type="primary"
+                use_container_width=True
             )
+    else:
+        st.info("👈 Ajusta los parámetros a la izquierda y haz clic en el botón mágico para ver tu ficha didáctica aquí.")
