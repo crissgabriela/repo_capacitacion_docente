@@ -202,7 +202,7 @@ with col1:
 
     // Separación para impresión y engrane
     dist_centros = (m * z1)/2 + (m * z2)/2;
-    distancia_impresion = dist_centros + (2 * tol); 
+    distancia_impresion = dist_centros + (0 * tol); 
 
     translate([distancia_impresion, 0, 0]) 
         rotate([0, 0, 180 + (180/z2)]) 
