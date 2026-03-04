@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Hélices | MakerBox</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/examples/jsm/controls/OrbitControls.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js",
+            "three/examples/jsm/exporters/STLExporter.js": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/exporters/STLExporter.js"
+        }
+    }
+    </script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #f8f9fa; }
+        canvas { display: block; }
+        /* Color de acento para los sliders usando el Magenta MakerBox */
+        input[type="range"] { accent-color: #c72979; }
+        
+        /* Personalización de la barra de desplazamiento lateral */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+        import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
+
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        const App = () => {
+            // Parámetros de Diseño
+            const [naca, setNaca] = useState("2412");
+            const [blades, setBlades] = useState(3);
+            const [radius, setRadius] = useState(60);
+            const [hubRadius, setHubRadius] = useState(12);
+            const [twist, setTwist] = useState(-35); 
+            const [chord, setChord] = useState(20);
+            const [shaftDia, setShaftDia] = useState(5);
+            const [ringEnabled, setRingEnabled] = useState(false);
+            const [ringHeight, setRingHeight] = useState(25);
+            const [ringThickness, setRingThickness] = useState(2);
+
+            const canvas3DRef = useRef(null);
+            const canvas2DRef = useRef(null);
+            const groupRef = useRef(new THREE.Group());
+
+            // Lógica Matemática NACA 4-Dígitos
+            const nacaProfile = useMemo(() => {
+                if (naca.length !== 4) return null;
+                const m = parseInt(naca[0]) / 100;
+                const p = parseInt(naca[1]) / 10;
+                const t = parseInt(naca.substring(2)) / 100;
+                
+                const upper = [], lower = [], csv = ["X,Y,Z"];
+                const pts = 60;
+
+                for (let i = 0; i <= pts; i++) {
+                    const x = i / pts;
+                    const yt = 5 * t * (0.2969 * Math.sqrt(x) - 0.1260 * x - 0.3516 * x**2 + 0.2843 * x**3 - 0.1015 * x**4);
+                    let yc = 0, dyc = 0;
+                    if (p > 0) {
+                        if (x <= p) {
+                            yc = (m / p**2) * (2*p*x - x**2);
+                            dyc = (2*m / p**2) * (p - x);
+                        } else {
+                            yc = (m / (1-p)**2) * ((1-2*p) + 2*p*x - x**2);
+                            dyc = (2*m / (1-p)**2) * (p - x);
+                        }
+                    }
+                    const th = Math.atan(dyc);
+                    const xu = x - yt * Math.sin(th), yu = yc + yt * Math.cos(th);
+                    const xl = x + yt * Math.sin(th), yl = yc - yt * Math.cos(th);
+                    
+                    upper.push({x: xu*100, y: yu*100});
+                    lower.push({x: xl*100, y: yl*100});
+                    csv.push(`${xu.toFixed(6)},${yu.toFixed(6)},0`);
+                    csv.push(`${xl.toFixed(6)},${yl.toFixed(6)},0`);
+                }
+                return { upper, lower, m, p, t, csv: csv.join("\n") };
+            }, [naca]);
+
+            // Visualización 2D (Colores MakerBox)
+            useEffect(() => {
+                if (!nacaProfile || !canvas2DRef.current) return;
+                const ctx = canvas2DRef.current.getContext('2d');
+                const { width: w, height: h } = canvas2DRef.current;
+                ctx.clearRect(0, 0, w, h);
+                const scale = (w - 60) / 100, ox = 30, oy = h / 2;
+                
+                ctx.strokeStyle = '#e2e8f0'; ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(w, oy); ctx.stroke();
+                ctx.beginPath(); ctx.lineWidth = 2.5; 
+                ctx.strokeStyle = '#c72979'; // Borde Magenta
+                ctx.fillStyle = 'rgba(0, 174, 239, 0.15)'; // Relleno Cian suave
+                ctx.moveTo(ox + nacaProfile.upper[0].x * scale, oy - nacaProfile.upper[0].y * scale);
+                nacaProfile.upper.forEach(p => ctx.lineTo(ox + p.x * scale, oy - p.y * scale));
+                [...nacaProfile.lower].reverse().forEach(p => ctx.lineTo(ox + p.x * scale, oy - p.y * scale));
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+            }, [nacaProfile]);
+
+            // Escena 3D
+            useEffect(() => {
+                if (!nacaProfile || !canvas3DRef.current) return;
+                const scene = new THREE.Scene();
+                scene.background = new THREE.Color(0xf8f9fa); // Fondo acorde al portal
+                const camera = new THREE.PerspectiveCamera(45, canvas3DRef.current.clientWidth / canvas3DRef.current.clientHeight, 1, 1000);
+                camera.position.set(120, 100, 120);
+                const renderer = new THREE.WebGLRenderer({ canvas: canvas3DRef.current, antialias: true });
+                renderer.setSize(canvas3DRef.current.clientWidth, canvas3DRef.current.clientHeight);
+                const controls = new OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true;
+                controls.dampingFactor = 0.05;
+                
+                // Iluminación mejorada
+                scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+                const l1 = new THREE.DirectionalLight(0xffffff, 0.8); l1.position.set(50, 100, 50); scene.add(l1);
+                const l2 = new THREE.DirectionalLight(0xffffff, 0.3); l2.position.set(-50, -50, -50); scene.add(l2);
+
+                const group = new THREE.Group();
+                groupRef.current = group;
+
+                // Materiales MakerBox
+                const matDark = new THREE.MeshStandardMaterial({color: 0x46247a, metalness: 0.3, roughness: 0.6}); // Morado
+                const matBlade = new THREE.MeshStandardMaterial({color: 0x00aeef, side: THREE.DoubleSide, metalness: 0.2, roughness: 0.4}); // Cian
+
+                // Núcleo
+                const hub = new THREE.Mesh(new THREE.CylinderGeometry(hubRadius, hubRadius, ringHeight, 40), matDark);
+                const shaft = new THREE.Mesh(new THREE.CylinderGeometry(shaftDia/2, shaftDia/2, ringHeight + 2, 32), new THREE.MeshBasicMaterial({color: 0xffffff}));
+                hub.add(shaft);
+                group.add(hub);
+
+                // Aspas
+                const shape = new THREE.Shape();
+                const pts = [...nacaProfile.upper, ...[...nacaProfile.lower].reverse()];
+                const xOffset = 50; 
+                const yOffset = (nacaProfile.upper[0].y + nacaProfile.lower[0].y) / 2;
+                
+                const cScale = chord / 100;
+                shape.moveTo((pts[0].x - xOffset)*cScale, (pts[0].y - yOffset)*cScale);
+                pts.forEach(p => shape.lineTo((p.x - xOffset)*cScale, (p.y - yOffset)*cScale));
+
+                const bladeLen = radius - hubRadius;
+                
+                for (let i = 0; i < blades; i++) {
+                    const geom = new THREE.ExtrudeGeometry(shape, { steps: 50, depth: bladeLen, bevelEnabled: false });
+                    const pos = geom.attributes.position;
+                    
+                    for (let j = 0; j < pos.count; j++) {
+                        const z = pos.getZ(j); 
+                        const angle = (z / bladeLen) * (twist * Math.PI / 180);
+                        const x = pos.getX(j);
+                        const y = pos.getY(j);
+                        pos.setXY(j, x*Math.cos(angle) - y*Math.sin(angle), x*Math.sin(angle) + y*Math.cos(angle));
+                    }
+                    geom.computeVertexNormals();
+                    const mesh = new THREE.Mesh(geom, matBlade);
+                    
+                    const angleStep = (i * 2 * Math.PI) / blades;
+                    mesh.position.set(Math.cos(angleStep) * hubRadius, 0, Math.sin(angleStep) * hubRadius);
+                    const target = new THREE.Vector3(Math.cos(angleStep) * (hubRadius + 10), 0, Math.sin(angleStep) * (hubRadius + 10));
+                    mesh.lookAt(target);
+                    group.add(mesh);
+                }
+
+                // Anillo Carenado
+                if (ringEnabled) {
+                    const shroudGroup = new THREE.Group();
+                    const outerGeo = new THREE.CylinderGeometry(radius + ringThickness, radius + ringThickness, ringHeight, 60, 1, true);
+                    const innerGeo = new THREE.CylinderGeometry(radius, radius, ringHeight, 60, 1, true);
+                    const shroudMat = new THREE.MeshStandardMaterial({color: 0xc72979, metalness: 0.3, roughness: 0.5, side: THREE.DoubleSide}); // Magenta
+                    
+                    const outer = new THREE.Mesh(outerGeo, shroudMat);
+                    const inner = new THREE.Mesh(innerGeo, shroudMat);
+                    const capGeo = new THREE.RingGeometry(radius, radius + ringThickness, 60);
+                    const capTop = new THREE.Mesh(capGeo, shroudMat); capTop.rotation.x = -Math.PI / 2; capTop.position.y = ringHeight / 2;
+                    const capBottom = new THREE.Mesh(capGeo, shroudMat); capBottom.rotation.x = Math.PI / 2; capBottom.position.y = -ringHeight / 2;
+
+                    shroudGroup.add(outer, inner, capTop, capBottom);
+                    group.add(shroudGroup);
+                }
+
+                scene.add(group);
+                const anim = () => { requestAnimationFrame(anim); group.rotation.y -= 0.01; controls.update(); renderer.render(scene, camera); };
+                anim();
+                return () => renderer.dispose();
+            }, [nacaProfile, blades, radius, hubRadius, twist, chord, shaftDia, ringEnabled, ringHeight, ringThickness]);
+
+            const downloadSTL = () => {
+                const ex = new STLExporter();
+                const res = ex.parse(groupRef.current);
+                const b = new Blob([res], {type: 'application/octet-stream'});
+                const u = URL.createObjectURL(b), a = document.createElement('a');
+                a.href = u; a.download = `Helice_MakerBox_NACA${naca}.stl`; a.click();
+            };
+            
+            const downloadCSV = () => {
+                const b = new Blob([nacaProfile.csv], {type: 'text/csv'});
+                const u = URL.createObjectURL(b), a = document.createElement('a');
+                a.href = u; a.download = `NACA_${naca}.csv`; a.click();
+            };
+
+            return (
+                <div className="flex flex-col h-screen text-slate-800">
+                    {/* Header con Gradiente MakerBox */}
+                    <header className="bg-gradient-to-r from-[#c72979] via-[#46247a] to-[#00aeef] text-white p-4 flex justify-between items-center shadow-lg z-10">
+                        <div className="flex items-center gap-4">
+                            {/* Ícono de cubo abstracto inspirado en el logo */}
+                            <div className="w-12 h-12 bg-white rounded-lg shadow-md flex items-center justify-center p-1">
+                                <div className="w-full h-full bg-gradient-to-br from-[#c72979] to-[#46247a] rounded transform rotate-45 scale-75"></div>
+                            </div>
+                            <div>
+                                <h1 className="text-2xl font-black tracking-tight">MakerBox</h1>
+                                <p className="text-[10px] font-bold opacity-90 tracking-[0.2em] uppercase">Co Creación e Innovación | Ingeniería UTalca</p>
+                            </div>
+                        </div>
+                        <div className="flex gap-3">
+                             <button onClick={downloadCSV} className="bg-white/20 hover:bg-white/30 backdrop-blur-sm border border-white/40 px-5 py-2.5 rounded-md text-xs font-bold shadow-sm transition-all text-white">
+                                DATOS PUNTOS (CSV)
+                             </button>
+                             <button onClick={downloadSTL} className="bg-[#00aeef] hover:bg-[#0092c8] px-5 py-2.5 rounded-md text-xs font-black shadow-md transition-all text-white flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                EXPORTAR STL
+                             </button>
+                        </div>
+                    </header>
+
+                    <div className="flex-1 flex overflow-hidden">
+                        {/* Barra lateral */}
+                        <aside className="w-80 bg-white border-r p-6 space-y-7 overflow-y-auto shadow-2xl z-10 relative">
+                            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#c72979] to-[#00aeef]"></div>
+                            
+                            <section className="space-y-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-2 h-2 rounded-full bg-[#c72979]"></span>
+                                    <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest">Parámetros Críticos</h2>
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Perfil NACA (4 dígitos)</label>
+                                    <input type="text" maxLength={4} value={naca} onChange={e => setNaca(e.target.value.replace(/\D/g,''))} className="w-full p-3 text-xl font-mono text-center text-[#46247a] font-bold bg-slate-50 border border-slate-200 rounded-lg focus:border-[#c72979] focus:ring-2 focus:ring-[#c72979]/20 outline-none transition-all shadow-inner" />
+                                </div>
+                                <Slider label="Cantidad Aspas" val={blades} min={2} max={6} step={1} onChange={setBlades} colorText="text-[#46247a]" />
+                                <Slider label="Radio Exterior (mm)" val={radius} min={40} max={150} step={1} onChange={setRadius} colorText="text-[#46247a]" />
+                                <Slider label="Radio Núcleo (mm)" val={hubRadius} min={10} max={40} step={1} onChange={setHubRadius} colorText="text-[#46247a]" />
+                            </section>
+
+                            <section className="space-y-4 pt-5 border-t border-slate-100">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-2 h-2 rounded-full bg-[#00aeef]"></span>
+                                    <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest">Aerodinámica</h2>
+                                </div>
+                                <Slider label="Cuerda (mm)" val={chord} min={10} max={60} step={1} onChange={setChord} colorText="text-[#00aeef]" />
+                                <Slider label="Torsión (°)" val={twist} min={-80} max={0} step={1} onChange={setTwist} colorText="text-[#00aeef]" />
+                            </section>
+                            
+                            <section className="space-y-4 pt-5 border-t border-slate-100">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="w-2 h-2 rounded-full bg-[#46247a]"></span>
+                                    <h2 className="text-xs font-black text-slate-800 uppercase tracking-widest">Carenado</h2>
+                                </div>
+                                <label className="flex items-center gap-3 cursor-pointer p-3 bg-slate-50 rounded-lg border border-slate-100 hover:bg-slate-100 transition-colors">
+                                    <input type="checkbox" checked={ringEnabled} onChange={e => setRingEnabled(e.target.checked)} className="w-5 h-5 rounded border-slate-300 text-[#c72979] focus:ring-[#c72979]" />
+                                    <span className="text-xs font-bold text-slate-700 uppercase">Habilitar Anillo Protector</span>
+                                </label>
+                                <div className={`transition-opacity duration-300 ${!ringEnabled ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
+                                    <Slider label="Altura Anillo (mm)" val={ringHeight} min={15} max={60} step={1} onChange={setRingHeight} colorText="text-[#46247a]" />
+                                    <div className="h-4"></div>
+                                    <Slider label="Espesor (mm)" val={ringThickness} min={1} max={5} step={0.5} onChange={setRingThickness} colorText="text-[#46247a]" />
+                                </div>
+                            </section>
+                        </aside>
+
+                        {/* Área de Visualización */}
+                        <main className="flex-1 flex flex-col p-6 space-y-4 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjIiIGZpbGw9IiNlMmU4ZjAiLz48L3N2Zz4=')]">
+                            <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden group">
+                                <div className="absolute top-4 left-4 z-10 bg-white/80 backdrop-blur px-3 py-1.5 rounded-md shadow-sm border border-slate-100 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                                    Previsualización 3D en Vivo
+                                </div>
+                                <canvas ref={canvas3DRef} className="w-full h-full cursor-move" />
+                            </div>
+                            
+                            <div className="h-36 bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col justify-center items-center relative">
+                                <span className="absolute top-3 left-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Sección Transversal</span>
+                                <span className="text-sm font-black text-[#46247a] uppercase mb-1">Perfil NACA {naca}</span>
+                                <canvas ref={canvas2DRef} width={600} height={80} className="w-full h-auto max-w-2xl" />
+                            </div>
+                        </main>
+                    </div>
+                </div>
+            );
+        };
+
+        const Slider = ({ label, val, min, max, step, onChange, colorText="text-[#c72979]" }) => (
+            <div>
+                <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500 mb-1.5">
+                    <span>{label}</span><span className={`${colorText} text-xs font-black`}>{val}</span>
+                </div>
+                <input type="range" min={min} max={max} step={step} value={val} onChange={e => onChange(parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer focus:outline-none" />
+            </div>
+        );
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
