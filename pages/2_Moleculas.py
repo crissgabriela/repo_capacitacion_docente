@@ -6,19 +6,28 @@ import shutil
 import base64
 
 # Configuración de estilo
-st.set_page_config(page_title="Módulo 1 | Capacitación", layout="wide")
+st.set_page_config(page_title="Moléculas 3D | Capacitación", layout="wide")
 
-st.title("🧊 Módulo 1: Diseño 3D Educativo")
-st.markdown("**Objetivo:** Diseñar objetos 3D aplicables al currículo escolar (modelos geométricos, moléculas) y exportar archivos en formato STL listos para la manufactura.")
+st.title("🧊 Generador de Moléculas 3D")
+st.markdown("**Objetivo:** Diseñar modelos moleculares tridimensionales para la enseñanza de ciencias, listos para la manufactura aditiva sin necesidad de conocimientos previos en software CAD.")
 st.divider()
+
+# --- CONEXIÓN PEDAGÓGICA ---
+with st.expander("💡 De lo Manual a lo Automático (Reflexión Pedagógica)", expanded=True):
+    st.markdown("""
+    En nuestra primera sesión virtual, ingresamos a **Tinkercad** y utilizamos formas primitivas (esferas para los átomos y cilindros para los enlaces) para construir manualmente una molécula de agua. 
+    
+    Ese proceso te permitió entender la lógica del modelado 3D en el espacio. Sin embargo, si necesitas imprimir un set de 20 moléculas de Metano (CH4) para que tus estudiantes entiendan la geometría tetraédrica, hacerlo a mano tomaría demasiado tiempo. 
+    
+    **¡Usa esta herramienta como tu asistente de diseño!** Configura los parámetros físicos, visualiza el resultado y descarga el archivo STL listo para llevar al software de laminado.
+    """)
 
 # --- FUNCIÓN DEL VISOR 3D (THREE.JS) ---
 def mostrar_visor_3d(ruta_stl):
-    """Inyecta un visor Three.js interactivo leyendo el archivo STL en base64."""
+    """Inyecta un visor interactivo ocultando la complejidad del código."""
     with open(ruta_stl, "rb") as f:
         datos_b64 = base64.b64encode(f.read()).decode("utf-8")
         
-    # Código HTML/JS incrustado para renderizar el STL
     html_code = f"""
     <!DOCTYPE html>
     <html>
@@ -40,16 +49,14 @@ def mostrar_visor_3d(ruta_stl):
             
             var controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
-            controls.autoRotate = true; // Rotación automática activada
+            controls.autoRotate = true; 
             controls.autoRotateSpeed = 2.0;
             
-            // Iluminación
             scene.add(new THREE.AmbientLight(0xffffff, 0.7));
             var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
             dirLight.position.set(50, 50, 50);
             scene.add(dirLight);
             
-            // Decodificar Base64
             var base64 = "{datos_b64}";
             var binary = atob(base64);
             var bytes = new Uint8Array(binary.length);
@@ -60,11 +67,10 @@ def mostrar_visor_3d(ruta_stl):
             var loader = new THREE.STLLoader();
             var geometry = loader.parse(bytes.buffer);
             
-            // Material usando el Cian de MakerBox
+            // Material Cian MakerBox para las moléculas
             var material = new THREE.MeshStandardMaterial({{color: 0x00aeef, roughness: 0.4, metalness: 0.1}});
             var mesh = new THREE.Mesh(geometry, material);
             
-            // Centrar el modelo en la cámara
             geometry.computeBoundingBox();
             var center = new THREE.Vector3();
             geometry.boundingBox.getCenter(center);
@@ -88,39 +94,32 @@ def mostrar_visor_3d(ruta_stl):
     </body>
     </html>
     """
-    components.html(html_code, height=450)
+    components.html(html_code, height=350)
 
-
-# --- LAYOUT A DOS COLUMNAS ---
-col1, col2 = st.columns([1, 1.5])
+# --- INTERFAZ LIMPIA PARA USUARIOS SIN CAD ---
+col1, col2 = st.columns([1, 1.2])
 
 with col1:
-    st.subheader("Configuración del Recurso")
-    st.write("Ajusta los parámetros para generar tu material didáctico.")
+    st.subheader("1. Configura tu Molécula")
     
     tipo_mol = st.selectbox("Estructura Molecular:", ["H2O", "CO2", "CH4"])
     
     c1, c2 = st.columns(2)
     radio = c1.slider("Radio Atómico (mm)", 5, 20, 10)
-    distancia = c2.slider("Longitud de Enlace (mm)", 10, 40, 22)
+    distancia = c2.slider("Longitud Enlace (mm)", 10, 40, 22)
     
     relieve_opcion = st.radio("Marcador de Átomos (Texto):", ["Sobre-relieve", "Bajo-relieve"], horizontal=True)
     v_relieve = 1.5 if relieve_opcion == "Sobre-relieve" else -1.5
 
-    # Lógica de colores ilustrativa para la interfaz
     st.markdown("### Composición")
     if tipo_mol == "H2O":
         st.info("🔴 1x Oxígeno (Centro)\n⚪ 2x Hidrógeno (Lados a 104.5°)")
     elif tipo_mol == "CO2":
         st.info("⚫ 1x Carbono (Centro)\n🔴 2x Oxígeno (Lados a 180°)")
     elif tipo_mol == "CH4":
-        st.info("⚫ 1x Carbono (Centro)\n⚪ 4x Hidrógeno (Geometría Tetraédrica)")
+        st.info("⚫ 1x Carbono (Centro)\n⚪ 4x Hidrógeno (Geometría Tetraédrica a 109.5°)")
 
-with col2:
-    st.subheader("Generador CSG (OpenSCAD)")
-    st.write("El código de Geometría Constructiva de Sólidos (CSG) se recalcula en tiempo real.")
-    
-    # --- CÓDIGO OPENSCAD ---
+    # Lógica "invisible" de OpenSCAD
     codigo_scad = f"""
     tipo = "{tipo_mol}"; radio_atomo = {radio}; distancia_enlace = {distancia};
     talla_letra = 7; relieve = {v_relieve}; 
@@ -164,45 +163,31 @@ with col2:
     
     scad_file = "temp_mol.scad"
     stl_file = f"molecula_{tipo_mol}.stl"
-    
-    # Detección dinámica de la ruta de OpenSCAD (Nube vs Local)
     ruta_openscad = shutil.which("openscad") or r"C:\Program Files\OpenSCAD\openscad.exe"
 
-    if st.button("🛠️ Compilar y Generar Malla 3D", type="primary", use_container_width=True):
-        with st.spinner("Procesando geometría y uniendo primitivas..."):
+    st.write("") # Espaciador
+    if st.button("✨ Visualizar y Preparar Molécula", type="primary", use_container_width=True):
+        with st.spinner("Ensamblando estructura molecular..."):
             with open(scad_file, "w") as f:
                 f.write(codigo_scad)
-            
             try:
                 subprocess.run([ruta_openscad, "-o", stl_file, scad_file], check=True)
-                st.success("¡Geometría compilada con éxito!")
             except Exception as e:
-                st.error("Error al compilar la geometría.")
-                st.info("Asegúrate de que el archivo `packages.txt` contenga `openscad` si estás en la nube.")
+                st.error("Error al generar el modelo. Si estás en la nube, verifica el archivo packages.txt.")
 
-# --- ÁREA DE VISUALIZACIÓN Y DESCARGA ---
-if os.path.exists(stl_file):
-    st.divider()
-    col3, col4 = st.columns([2, 1])
+with col2:
+    st.subheader("2. Previsualización y Descarga")
     
-    with col3:
-        st.subheader(f"Previsualización 3D: {tipo_mol}")
+    if os.path.exists(stl_file):
         mostrar_visor_3d(stl_file)
-        st.caption("Puedes arrastrar el ratón para rotar el modelo y usar la rueda para hacer zoom.")
-        
-    with col4:
-        st.subheader("Manufactura")
-        st.write("Tu modelo ha sido exportado en formato **.STL** (Standard Triangle Language) y está listo para ser laminado (Slicing).")
-        st.write(f"- **Tipo:** {tipo_mol}")
-        st.write(f"- **Distancia de enlaces:** {distancia} mm")
-        st.write("- **Geometría:** Optimizada sin soportes adicionales requeridos.")
         
         with open(stl_file, "rb") as f:
             st.download_button(
-                label="📥 DESCARGAR ARCHIVO STL",
+                label=f"📥 DESCARGAR MODELO {tipo_mol} (.STL)",
                 data=f,
                 file_name=stl_file,
                 mime="application/sla",
-                use_container_width=True,
-                type="primary"
+                use_container_width=True
             )
+    else:
+        st.info("👈 Ajusta los parámetros a la izquierda y haz clic en el botón mágico para ver tu molécula aquí.")
