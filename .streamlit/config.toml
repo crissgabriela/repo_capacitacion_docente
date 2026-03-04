@@ -1,0 +1,15 @@
+[theme]
+# El color principal (Magenta Makerbox) para botones destacados, sliders y enlaces
+primaryColor = "#c72979"
+
+# El color de fondo principal de la aplicación (Gris muy claro/Blanco roto)
+backgroundColor = "#f8f9fa"
+
+# El color de fondo secundario (Gris un poco más oscuro para el menú lateral)
+secondaryBackgroundColor = "#f1f5f9"
+
+# El color del texto principal (Gris oscuro, casi negro, para máxima legibilidad)
+textColor = "#2d2d2d"
+
+# La tipografía de la interfaz
+font = "sans serif"
