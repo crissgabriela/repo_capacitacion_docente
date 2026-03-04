@@ -16,7 +16,7 @@ with st.expander("💡 Cinemática en el Tablero MDF (Reflexión Pedagógica)", 
     st.markdown("""
     Un excelente proyecto de aula es pedir a los estudiantes que perforen un tablero de MDF para trasladar el movimiento de un punto A a un punto B. 
     
-    Para que el sistema fluya, esta herramienta calcula la **Distancia entre Centros Exacta**. Si los estudiantes hacen los agujeros en el MDF a esa distancia precisa, los engranajes encajarán perfectamente gracias a la **tolerancia de impresión (0.25 mm)** que la aplicación inyecta automáticamente entre los dientes.
+    Para que el sistema fluya, esta herramienta calcula la **Distancia entre Centros Exacta**. Si los estudiantes hacen los agujeros en el MDF a esa distancia precisa, los engranajes encajarán perfectamente gracias a la **tolerancia (Backlash)**. Al previsualizar el modelo, verás los engranajes alineados exactamente como quedarán en la vida real.
     """)
 
 # --- FUNCIÓN DEL VISOR 3D (THREE.JS) ---
@@ -109,7 +109,7 @@ with col1:
     c4, c5, c6 = st.columns(3)
     espesor = c4.number_input("Grosor (mm)", min_value=3.0, value=5.0)
     eje = c5.number_input("Eje (mm)", min_value=2.0, value=5.0)
-    tolerancia = c6.number_input("Tolerancia", min_value=0.1, max_value=0.5, value=0.25, step=0.05, help="Espacio libre entre dientes. 0.25mm es ideal para la mayoría de impresoras 3D.")
+    tolerancia = c6.number_input("Tolerancia", min_value=0.1, max_value=0.5, value=0.25, step=0.05, help="Espacio libre entre dientes. 0.25mm es ideal para impresión 3D.")
     
     # Cálculos cinemáticos críticos
     relacion = z2 / z1
@@ -128,7 +128,7 @@ with col1:
         
     st.metric("🎯 Perforación en Tablero MDF (Distancia entre Ejes)", f"{distancia_centros:.1f} mm")
 
-    # Lógica CSG para DOS engranajes con ajuste de Backlash (Tolerancia)
+    # Lógica CSG para DOS engranajes alineados visualmente
     codigo_scad = f"""
     m = {modulo}; z1 = {z1}; z2 = {z2}; h = {espesor}; eje = {eje}; tol = {tolerancia};
 
@@ -144,7 +144,7 @@ with col1:
                     circle(d = df + m, $fn=100); 
                     for (i = [0 : z-1]) {{
                         rotate([0, 0, i * ang])
-                        // Reducimos el ancho del diente restando tol/2 por lado para evitar fricción térmica
+                        // Reducimos el ancho del diente para generar el Backlash
                         polygon([
                             [(df)/2, -(m*1.0 - tol/2)],
                             [de/2,   -(m*0.35 - tol/2)],
@@ -158,12 +158,23 @@ with col1:
         }}
     }}
 
-    // Engranaje 1 (Motor)
+    // Engranaje 1 (Motor) - Generado en el origen
     gear(z1);
 
-    // Engranaje 2 (Salida) posicionado a un lado para imprimirse simultáneamente en la misma cama
-    distancia_impresion = (m * z1)/2 + (m * z2)/2 + 15; // 15mm de margen de seguridad
-    translate([distancia_impresion, 0, 0]) gear(z2);
+    // =================================================================
+    // ---> ZONA DE AJUSTE DE IMPRESIÓN Y ENGRANE <---
+    // =================================================================
+    dist_centros = (m * z1)/2 + (m * z2)/2;
+    
+    // MODIFICA ESTE VALOR: Separación en el STL = Centros + (2 * Tolerancia)
+    distancia_impresion = dist_centros + (2 * tol); 
+
+    // Alineación geométrica: Rotamos (180 + 180/z2) para asegurar que un 
+    // "hueco" apunte hacia el diente del Engranaje 1, evitando colisiones
+    translate([distancia_impresion, 0, 0]) 
+        rotate([0, 0, 180 + (180/z2)]) 
+        gear(z2);
+    // =================================================================
     """
     
     scad_file = "temp_tren.scad"
@@ -172,7 +183,7 @@ with col1:
 
     st.write("") 
     if st.button("✨ Generar Set de Transmisión", type="primary", use_container_width=True):
-        with st.spinner("Calculando tolerancias y fabricando par cinemático..."):
+        with st.spinner("Calculando tolerancias y alineando par cinemático..."):
             with open(scad_file, "w") as f:
                 f.write(codigo_scad)
             try:
